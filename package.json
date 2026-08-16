@@ -1,1 +1,1 @@
-{"name":"municipality-car","private":true,"version":"1.1.0","scripts":{"build":"node scripts/build.mjs","audit":"node scripts/audit.mjs","check":"npm run build && npm run audit"},"engines":{"node":">=20"}}
+{"name":"municipality-car","private":true,"version":"1.2.0","scripts":{"build":"node scripts/build-wrapper.mjs","audit":"node scripts/audit.mjs","check":"npm run build && npm run audit"},"engines":{"node":">=20"}}
