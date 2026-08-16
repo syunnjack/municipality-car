@@ -1,13 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const BASE_URL = 'https://municipality-car.jp';
 const DATA_URL = process.env.MUNICIPALITY_DATA_URL || 'https://raw.githubusercontent.com/code4fukui/localgovjp/master/localgovjp.json';
 const OUTPUT_DIR = 'dist';
-const UPDATED_AT = '2026-08-15';
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const config = readJson('site.config.json');
+const BASE_URL = normalizeBaseUrl(process.env.SITE_URL || config.siteUrl);
+const UPDATED_AT = process.env.SITE_UPDATED_AT || new Date().toISOString().slice(0, 10);
+const GA_MEASUREMENT_ID = process.env.GA_MEASUREMENT_ID || config.gaMeasurementId || '';
+const GOOGLE_SITE_VERIFICATION = process.env.GOOGLE_SITE_VERIFICATION || config.googleSiteVerification || '';
 const cars = readJson('data/toyota-models.json');
 const prefectures = readJson('data/prefectures.json');
 const legacyCityPaths = readJson('data/legacy-city-paths.json');
@@ -30,6 +32,27 @@ const records = municipalities.map((item) => {
   return { ...item, path: `/${prefectureByName.get(item.pref).slug}/${legacySlug || item.lgcode}/`, indexable: Boolean(legacySlug) };
 });
 const indexableUrls = new Set();
+
+validateSiteSettings();
+
+function normalizeBaseUrl(value) {
+  if (!value) throw new Error('siteUrl or SITE_URL is required');
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error(`Site URL must be an HTTPS origin without a path: ${value}`);
+  }
+  return url.origin;
+}
+
+function validateSiteSettings() {
+  if (GA_MEASUREMENT_ID && !/^G-[A-Z0-9]+$/.test(GA_MEASUREMENT_ID)) {
+    throw new Error(`Invalid GA4 measurement ID: ${GA_MEASUREMENT_ID}`);
+  }
+  if (GOOGLE_SITE_VERIFICATION && !/^[A-Za-z0-9_-]+$/.test(GOOGLE_SITE_VERIFICATION)) {
+    throw new Error('Invalid Google site verification token');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(UPDATED_AT)) throw new Error(`Invalid update date: ${UPDATED_AT}`);
+}
 
 async function fetchMunicipalities() {
   let lastError;
@@ -74,7 +97,9 @@ const jsonLd = (value) => JSON.stringify(value).replace(/</g, '\\u003c');
 
 function page({ title, description, urlPath, body, schema = [], indexable = true }) {
   const schemas = (Array.isArray(schema) ? schema : [schema]).filter(Boolean).map((item) => `<script type="application/ld+json">${jsonLd(item)}</script>`).join('');
-  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="${indexable ? 'index,follow,max-snippet:-1,max-image-preview:large' : 'noindex,follow'}"><link rel="canonical" href="${absolute(urlPath)}"><link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><meta property="og:type" content="website"><meta property="og:locale" content="ja_JP"><meta property="og:site_name" content="${escapeHtml(config.siteName)}"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${absolute(urlPath)}"><meta name="twitter:card" content="summary"><link rel="stylesheet" href="/assets/style.css">${schemas}</head><body><a class="skip-link" href="#content">本文へ移動</a><header class="site-header"><div class="header-inner"><a class="brand" href="/" aria-label="${escapeHtml(config.siteName)} トップ">${escapeHtml(config.siteName)}</a><nav aria-label="メインナビゲーション"><a href="/#area-search">地域検索</a><a href="/cars/">車種</a><a href="/guide/">売却ガイド</a></nav></div></header><main id="content">${body}</main><footer class="site-footer"><div class="footer-inner"><div><strong>${escapeHtml(config.siteName)}</strong><p>根拠のない固定相場を掲載せず、査定条件を整理・比較するための情報を提供します。</p></div><nav aria-label="フッターナビゲーション"><a href="/guide/">売却ガイド</a><a href="/editorial-policy/">編集方針</a><a href="/about/">サイト情報</a><a href="/privacy/">プライバシー</a><a href="/sitemap/">サイトマップ</a></nav><small>更新日: ${UPDATED_AT}　© ${new Date().getUTCFullYear()} ${escapeHtml(config.siteName)}</small></div></footer><script src="/assets/app.js" defer></script></body></html>`;
+  const verification = GOOGLE_SITE_VERIFICATION ? `<meta name="google-site-verification" content="${GOOGLE_SITE_VERIFICATION}">` : '';
+  const analytics = GA_MEASUREMENT_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag('js',new Date());gtag('config','${GA_MEASUREMENT_ID}');</script>` : '';
+  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><meta name="description" content="${escapeHtml(description)}"><meta name="robots" content="${indexable ? 'index,follow,max-snippet:-1,max-image-preview:large' : 'noindex,follow'}"><link rel="canonical" href="${absolute(urlPath)}">${verification}<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml"><meta property="og:type" content="website"><meta property="og:locale" content="ja_JP"><meta property="og:site_name" content="${escapeHtml(config.siteName)}"><meta property="og:title" content="${escapeHtml(title)}"><meta property="og:description" content="${escapeHtml(description)}"><meta property="og:url" content="${absolute(urlPath)}"><meta name="twitter:card" content="summary"><link rel="stylesheet" href="/assets/style.css">${schemas}${analytics}</head><body><a class="skip-link" href="#content">本文へ移動</a><header class="site-header"><div class="header-inner"><a class="brand" href="/" aria-label="${escapeHtml(config.siteName)} トップ">${escapeHtml(config.siteName)}</a><nav aria-label="メインナビゲーション"><a href="/#area-search">地域検索</a><a href="/cars/">車種</a><a href="/guide/">売却ガイド</a></nav></div></header><main id="content">${body}</main><footer class="site-footer"><div class="footer-inner"><div><strong>${escapeHtml(config.siteName)}</strong><p>根拠のない固定相場を掲載せず、査定条件を整理・比較するための情報を提供します。</p></div><nav aria-label="フッターナビゲーション"><a href="/guide/">売却ガイド</a><a href="/editorial-policy/">編集方針</a><a href="/about/">サイト情報</a><a href="/privacy/">プライバシー</a><a href="/sitemap/">サイトマップ</a></nav><small>更新日: ${UPDATED_AT}　© ${new Date().getUTCFullYear()} ${escapeHtml(config.siteName)}</small></div></footer><script src="/assets/app.js" defer></script></body></html>`;
 }
 
 function breadcrumbs(items) {
@@ -138,7 +163,7 @@ function buildEditorialPages() {
   const items = [
     ['/editorial-policy/', '編集方針・情報の扱い', '掲載情報の作成方針、価格情報、自治体データ、広告の扱いを説明します。', `<h2>価格を断定しません</h2><p>中古車の査定額は年式、走行距離、グレード、状態、修復歴、需給、査定時点などで変動します。当サイトは実査定に基づかない固定価格や、出典を確認できないランキングを作りません。</p><h2>自治体情報</h2><p>地域名、自治体コード、読み仮名、公式サイトURL等は、オープンデータを整備する <a href="https://github.com/code4fukui/localgovjp" rel="noopener noreferrer">localgovjp</a> を参照しています。</p><h2>広告</h2><p>広告や成果報酬型リンクを掲載する場合は、広告であることを表示します。現在の比較メモは特定事業者への送信機能を持ちません。</p><h2>更新・訂正</h2><p>生成時にデータ件数、URL、タイトル、構造化データ、内部リンクを自動検査します。</p>`],
     ['/about/', 'このサイトについて', `${config.siteName}の目的と使い方。`, `<p>${escapeHtml(config.siteName)}は、全国の市区町村と車種から査定前の確認項目を探し、複数の提示条件を同じ表で比べるための情報サイトです。</p><h2>できること</h2><ul><li>全国の市区町村名・読み仮名から地域ページを検索</li><li>トヨタ車種別の査定チェック項目を確認</li><li>複数社の提示額・入金日・条件を端末内の比較表に保存</li></ul><h2>できないこと</h2><p>当サイトは査定事業者ではなく、表示上の金額を保証しません。</p>`],
-    ['/privacy/', 'プライバシーポリシー', `${config.siteName}のプライバシーポリシー。`, `<h2>比較メモ</h2><p>比較メモへ入力した内容はブラウザのlocalStorageに保存され、当サイトのサーバーへ送信されません。ブラウザのサイトデータを削除すると消去されます。</p><h2>アクセス解析・広告</h2><p>アクセス解析や広告サービスを導入する場合、Cookie等が利用されることがあります。導入時は利用サービスと拒否方法をこのページへ追記します。</p><h2>外部リンク</h2><p>外部サイトでの個人情報の取り扱いは、各サイトの方針をご確認ください。</p>`],
+    ['/privacy/', 'プライバシーポリシー', `${config.siteName}のプライバシーポリシー。`, `<h2>比較メモ</h2><p>比較メモへ入力した内容はブラウザのlocalStorageに保存され、当サイトのサーバーへ送信されません。ブラウザのサイトデータを削除すると消去されます。</p><h2>アクセス解析</h2><p>当サイトは利用状況の把握と改善のためGoogle Analytics 4を利用します。Google AnalyticsはCookie等を用いて、閲覧ページ、端末・ブラウザ情報、概算地域などを収集する場合があります。収集される情報に氏名やメールアドレスは含まれません。データの取り扱いはGoogleの規約・プライバシーポリシーに基づきます。</p><p><a href="https://tools.google.com/dlpage/gaoptout?hl=ja" rel="noopener noreferrer">Google Analytics オプトアウト アドオン</a>を利用すると計測を無効にできます。</p><h2>広告</h2><p>広告サービスを導入する場合は、このページに利用サービスとデータの取り扱いを追記します。</p><h2>外部リンク</h2><p>外部サイトでの個人情報の取り扱いは、各サイトの方針をご確認ください。</p>`],
   ];
   for (const [urlPath, heading, description, content] of items) {
     const crumb = breadcrumbs([{ name: '全国', path: '/' }, { name: heading, path: urlPath }]);

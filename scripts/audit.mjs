@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const DIST = 'dist';
-const BASE_URL = 'https://municipality-car.jp';
+const config = JSON.parse(fs.readFileSync('site.config.json', 'utf8'));
+const BASE_URL = new URL(process.env.SITE_URL || config.siteUrl).origin;
+const GA_MEASUREMENT_ID = process.env.GA_MEASUREMENT_ID || config.gaMeasurementId || '';
+const GOOGLE_SITE_VERIFICATION = process.env.GOOGLE_SITE_VERIFICATION || config.googleSiteVerification || '';
 const errors = [];
 const htmlFiles = walk(DIST).filter((file) => file.endsWith('.html'));
 const titles = new Map();
@@ -14,6 +17,7 @@ assert(htmlFiles.length > 1900, `Expected more than 1900 HTML files, found ${htm
 assert(searchIndex.length > 1900, `Search index is incomplete: ${searchIndex.length}`);
 assert(!sitemap.includes('.html</loc>'), 'Sitemap contains .html URLs');
 assert(!sitemap.includes('準備中'), 'Sitemap contains placeholder text');
+assert(fs.readFileSync(path.join(DIST, 'robots.txt'), 'utf8').includes(`Sitemap: ${BASE_URL}/sitemap.xml`), 'robots.txt has a mismatched sitemap URL');
 
 for (const file of htmlFiles) {
   const html = fs.readFileSync(file, 'utf8');
@@ -32,12 +36,15 @@ for (const file of htmlFiles) {
   if (!isRedirect && !is404) {
     assert((html.match(/<h1[ >]/g) || []).length === 1, `${relative}: expected exactly one h1`);
     assert(html.includes('property="og:title"'), `${relative}: missing Open Graph metadata`);
+    if (GA_MEASUREMENT_ID) assert(html.includes(`gtag/js?id=${GA_MEASUREMENT_ID}`), `${relative}: missing GA4 tag`);
+    if (GOOGLE_SITE_VERIFICATION) assert(html.includes(`name="google-site-verification" content="${GOOGLE_SITE_VERIFICATION}"`), `${relative}: missing Google verification tag`);
     for (const match of html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)) {
       try { JSON.parse(match[1]); } catch (error) { errors.push(`${relative}: invalid JSON-LD (${error.message})`); }
     }
   }
 
   if (!noindex && !is404) {
+    assert(canonical.startsWith(`${BASE_URL}/`), `${relative}: canonical host does not match site URL`);
     assert(sitemapUrls.has(canonical), `${relative}: indexable canonical is missing from sitemap`);
     if (titles.has(title)) errors.push(`${relative}: duplicate title also used by ${titles.get(title)}`);
     titles.set(title, relative);
