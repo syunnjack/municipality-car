@@ -13,6 +13,7 @@ python3 -m http.server 4173 --directory dist
 
 - 自治体データ件数と自治体コード
 - canonical、robots、Open Graph、JSON-LD
+- 本番URL、GA4、Google Search Console所有権確認の整合性
 - インデックス対象ページとサイトマップの一致
 - 重複タイトル、壊れた内部リンク、プレースホルダー
 - 地域検索用データの件数
@@ -28,3 +29,5 @@ python3 -m http.server 4173 --directory dist
 ## デプロイ
 
 VercelのBuild Commandは `npm run check`、Output Directoryは `dist` です。監査に失敗したビルドは公開されません。
+
+本番URLと計測設定は `site.config.json` で管理します。必要に応じて `SITE_URL`、`GA_MEASUREMENT_ID`、`GOOGLE_SITE_VERIFICATION`、`SITE_UPDATED_AT` の各環境変数で上書きできます。`SITE_URL` はパスを含まないHTTPSオリジンを指定してください。
